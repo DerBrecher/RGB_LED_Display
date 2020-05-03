@@ -1,0 +1,21 @@
+#######################################
+# Syntax Coloring Map For WS2812 Display
+#######################################
+# Class
+#######################################
+
+Display			KEYWORD1
+WS2812DisplayDriver	KEYWORD1
+
+#######################################
+# Methods and Functions
+#######################################	
+
+setCharColor		KEYWORD2
+setStringColor		KEYWORD2
+clear			KEYWORD2
+show			KEYWORD2
+shiftFrame		KEYWORD2
+setString		KEYWORD2
+getString		KEYWORD2
+getStringLength		KEYWORD2
