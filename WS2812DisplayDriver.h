@@ -1,42 +1,128 @@
-#ifndef WS2812_DISPLAY_h
-#define WS2812_DISPLAY_h
-#include <Arduino.h> 
-#include <FastLED.h>
+#ifndef WS2812DISPLAY_H
+#define WS2812DISPLAY_H
+
+//#include <Arduino.h>
+//#define WS2812_DISPLAY_DRIVER_FASTLED
+#define WS2812_DISPLAY_DRIVER_NEOPIXEL
+
+#ifdef WS2812_DISPLAY_DRIVER_FASTLED
+	#include <FastLED.h>
+#endif
+
+#ifdef WS2812_DISPLAY_DRIVER_NEOPIXEL
+	#include <NeoPixelBus.h>
+#endif
+
 
 #define DISPLAY_HEIGHT 5
 #define DISPLAY_WIDTH 19
 #define STRING_DISPLAY_MAX_LENGTH 28
 
+
+
+struct RGBPixel;
+
+struct RGBPixel {
+	union {
+		struct  {
+			union {
+				uint8_t r;
+				uint8_t red;
+			};
+			union {
+				uint8_t g;
+				uint8_t green;
+			};
+			union {
+				uint8_t b;
+				uint8_t blue;
+			};
+		};
+		uint8_t raw[3];
+	};
+	
+
+	// Array access operator to index into the crgb object
+	inline uint8_t& operator[] (uint8_t x) __attribute__((always_inline))
+	{
+		return raw[x];
+	}
+
+	// default values are UNINITIALIZED
+	inline RGBPixel() __attribute__((always_inline))
+	{
+	}
+
+	// allow construction from R, G, B
+	inline RGBPixel(uint8_t ir, uint8_t ig, uint8_t ib)  __attribute__((always_inline))
+	: r(ir), g(ig), b(ib)
+	{
+	}
+
+	// allow copy construction
+	inline RGBPixel(const RGBPixel& rhs) __attribute__((always_inline))
+	{
+		r = rhs.r;
+		g = rhs.g;
+		b = rhs.b;
+	}
+
+	// allow assignment from one RGB struct to another
+	inline RGBPixel& operator= (const RGBPixel& rhs) __attribute__((always_inline))
+    {
+        r = rhs.r;
+        g = rhs.g;
+        b = rhs.b;
+        return *this;
+    }
+};
+
+
 class Display {
 	public:
-		Display(CRGB ledDisplay[][DISPLAY_HEIGHT], CRGB leds[], bool invertDisplay);
-					
-		int setCharColor(int charNo, CRGB charColor);
-		int setStringColor(CRGB newStringColor);
+		#ifdef WS2812_DISPLAY_DRIVER_FASTLED
+		Display(CRGB outputLedArray[], bool invertDisplay);
+		#endif
+
+		#ifdef WS2812_DISPLAY_DRIVER_NEOPIXEL
+		Display(NeoPixelBus<NeoGrbFeature, NeoEsp8266Dma800KbpsMethod> *outputStrip, bool invertDisplay);
+		#endif
+
+		int setCharColor(int charNo, RGBPixel charColor);
+		int setStringColor(RGBPixel newStringColor);
 		void clear();
 		void show();
 		void shiftFrame();
+		void setBrightness(int newBrightness);
 		void setString(char* newString);
 		char* getString();
 		int getStringLength();
 		
-		void test(); //only used for debbuging		
+		void test(); //only used for debbuging
+
 	protected:
+		bool inverted = false;
+		int brightness = 40;
+		uint8_t dic[255];
 		char* string = {"This was a great test"};
 		int strLength;
-    bool inverted = false;
-		
 		int frameOffset = 0;
-		CRGB frameBuffer[STRING_DISPLAY_MAX_LENGTH * 4][DISPLAY_HEIGHT];
+		
+		RGBPixel frameBuffer[STRING_DISPLAY_MAX_LENGTH * 4][DISPLAY_HEIGHT];
+		RGBPixel charColor[STRING_DISPLAY_MAX_LENGTH];
 		
 		void updateFrame();
-		
-		CRGB (*pLedDisplay)[DISPLAY_HEIGHT];
+		void initDic();
+
+		#ifdef WS2812_DISPLAY_DRIVER_FASTLED
 		CRGB  *pLeds;
-		CRGB charColor[STRING_DISPLAY_MAX_LENGTH];
+		#endif
 		
-		uint8_t dic[255];
+		#ifdef WS2812_DISPLAY_DRIVER_NEOPIXEL
+		NeoPixelBus<NeoGrbFeature, NeoEsp8266Dma800KbpsMethod> *pStrip;
+		#endif
 		
+
 		uint8_t font5by3[67][5][3] = {
 			//----- Numbers -----
 			{ //zero 
@@ -512,5 +598,4 @@ class Display {
 			}
 		};
 };
-
 #endif

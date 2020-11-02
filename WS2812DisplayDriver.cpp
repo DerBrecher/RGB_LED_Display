@@ -1,16 +1,186 @@
 #include "WS2812DisplayDriver.h"
 
-//const uint8_t Display::font5by3[3][5][3];
-//Display* Display:selfPointer;
-
-Display::Display(CRGB ledDisplay[][DISPLAY_HEIGHT], CRGB leds[], bool invertDisplay){
+#ifdef WS2812_DISPLAY_DRIVER_FASTLED
+Display::Display(CRGB outputLedArray[], bool invertDisplay){
+	inverted = invertDisplay;
+	pLeds = outputLedArray;
 	
-	pLedDisplay = ledDisplay;
-	pLeds = leds;
-  inverted = invertDisplay;
-	
+	this->initDic();
 	this->setStringColor({40,40,40});
+}
+
+void Display::show(){
+	for (int x = 0; x < DISPLAY_WIDTH; x++) {
+		for (int y = 0; y < DISPLAY_HEIGHT; y++) {
+      if (inverted) {
+        if ( x % 2) { //odd row
+			pLeds[90 - x * DISPLAY_HEIGHT + y].r = frameBuffer[x + frameOffset][y].r;
+			pLeds[90 - x * DISPLAY_HEIGHT + y].g = frameBuffer[x + frameOffset][y].g;
+			pLeds[90 - x * DISPLAY_HEIGHT + y].b = frameBuffer[x + frameOffset][y].b;
+        }
+        else { //even row
+			pLeds[94 - x * DISPLAY_HEIGHT - y].r = frameBuffer[x + frameOffset][y].r;
+			pLeds[94 - x * DISPLAY_HEIGHT - y].g = frameBuffer[x + frameOffset][y].g;
+			pLeds[94 - x * DISPLAY_HEIGHT - y].b = frameBuffer[x + frameOffset][y].b;
+        }        
+      }
+      else {
+        if ( x % 2) { //odd row
+			pLeds[x * DISPLAY_HEIGHT + 4 - y].r = frameBuffer[x + frameOffset][y].r;
+			pLeds[x * DISPLAY_HEIGHT + 4 - y].g = frameBuffer[x + frameOffset][y].g;
+			pLeds[x * DISPLAY_HEIGHT + 4 - y].b = frameBuffer[x + frameOffset][y].b;
+        }
+        else { //even row
+			pLeds[x * DISPLAY_HEIGHT + y].r = frameBuffer[x + frameOffset][y].r;
+			pLeds[x * DISPLAY_HEIGHT + y].g = frameBuffer[x + frameOffset][y].g;
+			pLeds[x * DISPLAY_HEIGHT + y].b = frameBuffer[x + frameOffset][y].b;
+        }
+      }
+		}
+	}
+	FastLED.show();
+}
+#endif
+
+#ifdef WS2812_DISPLAY_DRIVER_NEOPIXEL
+Display::Display(NeoPixelBus<NeoGrbFeature, NeoEsp8266Dma800KbpsMethod> *outputStrip, bool invertDisplay){
+	inverted = invertDisplay;
+	pStrip = outputStrip;
+	
+	this->initDic();
+	this->setStringColor({40,40,40});
+}
+
+void Display::show(){
+	for (int x = 0; x < DISPLAY_WIDTH; x++) {
+		for (int y = 0; y < DISPLAY_HEIGHT; y++) {
+			if (inverted) {
+				if ( x % 2) { //odd row
+					pStrip->SetPixelColor(90 - x * DISPLAY_HEIGHT + y, RgbColor(
+						frameBuffer[x + frameOffset][y].r * brightness / 255,
+						frameBuffer[x + frameOffset][y].g * brightness / 255,
+						frameBuffer[x + frameOffset][y].b * brightness / 255
+					));
+				}
+				else { //even row
+					pStrip->SetPixelColor(94 - x * DISPLAY_HEIGHT - y, RgbColor(
+						frameBuffer[x + frameOffset][y].r * brightness / 255,
+						frameBuffer[x + frameOffset][y].g * brightness / 255,
+						frameBuffer[x + frameOffset][y].b * brightness / 255
+					));
+				}        
+			}
+			else {
+				if ( x % 2) { //odd row
+					pStrip->SetPixelColor(x * DISPLAY_HEIGHT + 4 - y, RgbColor(
+						frameBuffer[x + frameOffset][y].r,
+						frameBuffer[x + frameOffset][y].g,
+						frameBuffer[x + frameOffset][y].b
+					));
+				}
+				else { //even row
+					pStrip->SetPixelColor(x * DISPLAY_HEIGHT + y, RgbColor(
+						frameBuffer[x + frameOffset][y].r,
+						frameBuffer[x + frameOffset][y].g,
+						frameBuffer[x + frameOffset][y].b
+					));
+				}
+			}
+		}
+	}
+
+	pStrip->Show();
+}
+#endif
+
+void Display::setBrightness(int newBrightness){
+	this->brightness = newBrightness;
+}
+
+void Display::clear(){
+	for (int x = 0; x < STRING_DISPLAY_MAX_LENGTH; x++) {
+		for (int y = 0; y < DISPLAY_HEIGHT; y++) {
+			frameBuffer[x][y].r = 0;
+			frameBuffer[x][y].g = 0;
+			frameBuffer[x][y].b = 0;
+		}
+	}
+}
+
+void Display::setString(char* newString){
+	
+	this->strLength = strlen(newString);
+	
+	if(strLength >= STRING_DISPLAY_MAX_LENGTH) { //make sure we have no buffer overflow
+		strLength = STRING_DISPLAY_MAX_LENGTH - 1;
+	}
+	
+	memset(this->string, 0, STRING_DISPLAY_MAX_LENGTH);	
+	strncpy(this->string, newString, strLength);
+	this->string[strLength] = '\0';
+	
+	int lineCounter = 0;
+	
+	for (int i = 0; i < strLength; i++) {
+		for (int x = 0; x < 3; x++) {
+			for (int y = 0; y < 5; y++) {
+				if (font5by3[dic[string[i]]][y][x]) { //x and y are flipped here to make the font easier dictionary to read
+					frameBuffer[lineCounter][y].r = charColor[i].r;
+					frameBuffer[lineCounter][y].g = charColor[i].g;
+					frameBuffer[lineCounter][y].b = charColor[i].b;
+				}
+				else {
+					frameBuffer[lineCounter][y].r = 0;
+					frameBuffer[lineCounter][y].g = 0;
+					frameBuffer[lineCounter][y].b = 0;
+				}
+			}
+			lineCounter++;
+		}
+		lineCounter++;
+	}
+	
+	lineCounter = strLength * 4;
 		
+	this->frameOffset = 0;
+}
+
+char* Display::getString(){	
+	return this->string;
+}
+
+void Display::shiftFrame(){
+	frameOffset++;
+	if (frameOffset > strLength * 4){
+		frameOffset= 0;
+	}
+}
+
+int Display::setCharColor(int charNo, RGBPixel newCharColor){
+	if(charNo < STRING_DISPLAY_MAX_LENGTH - 1){
+		this->charColor[charNo].r = newCharColor.r;
+		this->charColor[charNo].g = newCharColor.g;
+		this->charColor[charNo].b = newCharColor.b;
+	}
+}
+
+int Display::setStringColor(RGBPixel newStringColor){
+	for(int i = 0; i < STRING_DISPLAY_MAX_LENGTH; i++){
+		this->charColor[i].r = newStringColor.r;
+		this->charColor[i].g = newStringColor.g;
+		this->charColor[i].b = newStringColor.b;
+	}
+}
+
+int Display::getStringLength(){
+	return this->strLength;
+}
+
+void Display::test(){ //only used for debbuging
+}
+
+//Dictonary for mapping from ASCI Chars to 5by3 font
+void Display::initDic(){
 	//----- Numbers -----
 	this->dic[48] = 0; //0
 	this->dic[49] = 1; //1
@@ -81,8 +251,8 @@ Display::Display(CRGB ledDisplay[][DISPLAY_HEIGHT], CRGB leds[], bool invertDisp
 	
 	//----- Symbols -----
 	this->dic[32] = 36; // Space
-	this->dic[44] = 37; // ,
-	this->dic[46] = 38; // .
+  	this->dic[46] = 37; // .
+	this->dic[44] = 38; // ,
 	this->dic[34] = 39; // "
 	this->dic[63] = 40; // ?
 	this->dic[33] = 41; // !
@@ -111,132 +281,4 @@ Display::Display(CRGB ledDisplay[][DISPLAY_HEIGHT], CRGB leds[], bool invertDisp
 	this->dic['|'] = 64; // |
 	this->dic['}'] = 65; // }
 	this->dic['~'] = 66; // ~
-}
-
-void Display::show(){
-  if(inverted) {
-    for (int x = 0; x < DISPLAY_WIDTH; x++) {
-      for (int y = 0; y < DISPLAY_HEIGHT; y++) {
-        if ( x % 2) { //odd row
-          pLeds[(DISPLAY_WIDTH - 1)* DISPLAY_HEIGHT -(x * DISPLAY_HEIGHT) +y] = pLedDisplay[x][y];
-          //pLeds[90 - x * DISPLAY_HEIGHT + y] = CRGB(0, 60, 0);
-        }
-        else { //even row
-          pLeds[DISPLAY_WIDTH* DISPLAY_HEIGHT -1 -(x * DISPLAY_HEIGHT) -y] = pLedDisplay[x][y];
-          //pLeds[94 - x * DISPLAY_HEIGHT - y] = CRGB(60, 0, 0);
-        }
-      }
-    }
-  }
-  else{
-    for (int x = 0; x < DISPLAY_WIDTH; x++) {
-      for (int y = 0; y < DISPLAY_HEIGHT; y++) {
-        if ( x % 2) { //odd row
-          pLeds[x * DISPLAY_HEIGHT + 4 - y] = pLedDisplay[x][y];
-        }
-        else { //even row
-          pLeds[x * DISPLAY_HEIGHT + y] = pLedDisplay[x][y];
-        }
-      }
-    }
-  }
-	FastLED.show();
-}
-
-void Display::clear(){
-	for (int x = 0; x < DISPLAY_WIDTH; x++) {
-		for (int y = 0; y < DISPLAY_HEIGHT; y++) {
-			pLedDisplay[x][y].r = 0;
-			pLedDisplay[x][y].g = 0;
-			pLedDisplay[x][y].b = 0;
-		}
-	}
-}
-
-void Display::setString(char* newString){
-	
-	this->strLength = strlen(newString);
-	
-	if(strLength >= STRING_DISPLAY_MAX_LENGTH) { //make sure we have no buffer overflow
-		strLength = STRING_DISPLAY_MAX_LENGTH - 1;
-	}
-	
-	memset(this->string, 0, STRING_DISPLAY_MAX_LENGTH);	
-	strncpy(this->string, newString, strLength);
-	this->string[strLength] = '\0';
-	
-	int lineCounter = 0;
-	
-	for (int i = 0; i < strLength; i++) {
-		for (int x = 0; x < 3; x++) {
-			for (int y = 0; y < 5; y++) {
-				if (font5by3[dic[string[i]]][y][x]) { //x and y are flipped here to make the font dictionary easier to read
-					frameBuffer[lineCounter][y].r = charColor[i].r;
-					frameBuffer[lineCounter][y].g = charColor[i].g;
-					frameBuffer[lineCounter][y].b = charColor[i].b;
-				}
-				else {
-					frameBuffer[lineCounter][y].r = 0;
-					frameBuffer[lineCounter][y].g = 0;
-					frameBuffer[lineCounter][y].b = 0;
-				}
-			}
-			lineCounter++;
-		}
-		lineCounter++;
-	}
-	
-	lineCounter = strLength * 4;
-		
-	this->frameOffset = 0;
-	this->updateFrame();
-}
-
-char* Display::getString(){	
-	return this->string;
-}
-
-void Display::updateFrame(){
-	for (int x = 0; x < DISPLAY_WIDTH; x++) {
-		for (int y = 0; y < DISPLAY_HEIGHT; y++) {
-			if (x + frameOffset < strLength * 4){
-				pLedDisplay[x][y] = frameBuffer[x + frameOffset][y];
-			}
-			else{
-				pLedDisplay[x][y] = frameBuffer[x - (strLength*4 - frameOffset)][y];
-			}
-		}
-	}
-}
-
-void Display::shiftFrame(){
-	frameOffset++;
-	if (frameOffset > strLength * 4){
-		frameOffset= 0;
-	}
-	
-	this->updateFrame();
-}
-
-int Display::setCharColor(int charNo, CRGB newCharColor){
-	if(charNo < STRING_DISPLAY_MAX_LENGTH - 1){
-		this->charColor[charNo].r = newCharColor.r;
-		this->charColor[charNo].g = newCharColor.g;
-		this->charColor[charNo].b = newCharColor.b;
-	}
-}
-
-int Display::setStringColor(CRGB newStringColor){
-	for(int i = 0; i < STRING_DISPLAY_MAX_LENGTH; i++){
-		this->charColor[i].r = newStringColor.r;
-		this->charColor[i].g = newStringColor.g;
-		this->charColor[i].b = newStringColor.b;
-	}
-}
-
-int Display::getStringLength(){
-	return this->strLength;
-}
-
-void Display::test(){ //only used for debbuging
 }
